@@ -141,14 +141,19 @@
       showApp();
       await refreshDashboard();
       notify(state.mode === 'register' ? 'Account created' : 'Welcome back', 'Your money dashboard is ready.');
-    } catch (error) {
-      authError.textContent = error.message;
-      authError.hidden = false;
-    } finally {
-      submit.disabled = false;
-      submit.innerHTML = original;
-      setAuthMode(state.mode);
-    }
+    
+} catch (error) {
+  const message = error.message.toLowerCase();
+
+  authError.textContent = message.includes('already registered')
+    ? 'This email is already registered. Please sign in instead.'
+    : error.message;
+
+  authError.hidden = false;
+} finally {
+  submit.disabled = false;
+  submit.innerHTML = original;
+}
   }
 
   function clearSession() {
