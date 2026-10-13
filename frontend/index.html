@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0e1b2e" />
+  <meta name="description" content="A clean personal finance dashboard to track expenses and understand your spending." />
+  <title>Moneta — Expense Tracker</title>
+  <link rel="stylesheet" href="/frontend/styles.css" />
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+
+  <main id="authView" class="auth-view">
+    <section class="auth-story">
+      <a class="brand brand-light" href="#" aria-label="Moneta home">
+        <span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 22.5V9.7l9-4.2 9 4.2v12.8l-9 4.2-9-4.2Z"/><path d="m11.3 19.3 4.7-10 4.7 10M13 16h6"/></svg></span>
+        <span>moneta<span class="brand-dot">.</span></span>
+      </a>
+      <div class="story-copy">
+        <span class="eyebrow"><span class="eyebrow-dot"></span> PERSONAL FINANCE, MADE CLEAR</span>
+        <h1>A clearer view<br />of <em>your money.</em></h1>
+        <p>Make every rupee count. Keep your expenses organised, spot your habits, and feel more in control of your money.</p>
+        <div class="story-points">
+          <div><span class="point-check">✓</span><span>Everything in one calm dashboard</span></div>
+          <div><span class="point-check">✓</span><span>Private, personal expense tracking</span></div>
+          <div><span class="point-check">✓</span><span>Simple insights, no spreadsheets</span></div>
+        </div>
+      </div>
+      <div class="story-bottom"><span class="story-line"></span><span>Small steps. Better money habits.</span><span class="story-bottom-note">BUILT FOR YOUR EVERYDAY</span></div>
+      <div class="story-orbit orbit-a"></div><div class="story-orbit orbit-b"></div><div class="story-glow"></div>
+    </section>
+
+    <section class="auth-panel">
+      <div class="auth-panel-top"><span class="mobile-brand">moneta<span class="brand-dot">.</span></span><span class="secure-label"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4.5" y="8.5" width="11" height="8" rx="2"/><path d="M7 8.5V6a3 3 0 0 1 6 0v2.5"/></svg> SECURE SIGN IN</span></div>
+      <div class="auth-card-wrap">
+        <div class="auth-heading"><span class="auth-kicker" id="authKicker">WELCOME BACK</span><h2 id="authTitle">Good to see you.</h2><p id="authSubtitle">Sign in to pick up where you left off.</p></div>
+        <div class="auth-switch" role="tablist" aria-label="Authentication options">
+          <button type="button" id="showLogin" class="switch-btn active" role="tab" aria-selected="true">Sign in</button>
+          <button type="button" id="showRegister" class="switch-btn" role="tab" aria-selected="false">Create account</button>
+        </div>
+        <form id="authForm" class="form-stack">
+          <label class="field" id="nameField" hidden><span>Full name</span><div class="input-wrap"><span class="input-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.3"/><path d="M5.5 20c.4-3.6 2.7-5.5 6.5-5.5s6.1 1.9 6.5 5.5"/></svg></span><input id="fullName" name="name" autocomplete="name" maxlength="100" placeholder="How should we call you?" /></div></label>
+          <label class="field"><span>Email address</span><div class="input-wrap"><span class="input-icon"><svg viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4.5 7 7.5 5.7L19.5 7"/></svg></span><input id="email" name="email" type="email" autocomplete="email" required placeholder="you@example.com" /></div></label>
+          <label class="field"><span>Password</span><div class="input-wrap"><span class="input-icon"><svg viewBox="0 0 24 24"><rect x="4.5" y="10" width="15" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v2"/></svg></span><input id="password" name="password" type="password" autocomplete="current-password" required minlength="8" placeholder="At least 8 characters" /><button class="password-toggle" type="button" id="togglePassword" aria-label="Show password"><svg viewBox="0 0 24 24"><path d="M2.5 12s3.2-6 9.5-6 9.5 6 9.5 6-3.2 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></div></label>
+          <div class="auth-error" id="authError" role="alert" hidden></div>
+          <button class="btn btn-primary btn-wide" id="authSubmit" type="submit"><span>Sign in to Moneta</span><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+        </form>
+        <p class="auth-legal">By continuing, you agree to keep your account details safe. Your financial data stays tied to your account.</p>
+      </div>
+      <footer class="auth-footer"><span>© <span id="year"></span> Moneta</span><span><span class="footer-status"></span> Your money, your view</span></footer>
+    </section>
+  </main>
+
+  <div id="appView" class="app-view" hidden>
+    <aside class="sidebar" id="sidebar">
+      <a class="brand brand-light sidebar-brand" href="#overview" aria-label="Moneta overview"><span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 22.5V9.7l9-4.2 9 4.2v12.8l-9 4.2-9-4.2Z"/><path d="m11.3 19.3 4.7-10 4.7 10M13 16h6"/></svg></span><span>moneta<span class="brand-dot">.</span></span></a>
+      <div class="side-caption">WORKSPACE</div>
+      <nav class="side-nav" aria-label="Main navigation">
+        <button class="nav-item active" data-scroll="overview"><span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.7"/><rect x="13.5" y="3.5" width="7" height="4" rx="1.5"/><rect x="13.5" y="10.5" width="7" height="10" rx="1.7"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.7"/></svg></span>Overview<span class="nav-indicator"></span></button>
+        <button class="nav-item" data-scroll="transactions"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M5 6.5h14M5 12h14M5 17.5h14"/><circle cx="3.5" cy="6.5" r=".5"/><circle cx="3.5" cy="12" r=".5"/><circle cx="3.5" cy="17.5" r=".5"/></svg></span>Transactions</button>
+        <button class="nav-item" data-scroll="insights"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16"/><path d="m6.5 15 4-4 3 2 5.5-7"/><path d="M15.5 6H19v3.5"/></svg></span>Spending insights</button>
+      </nav>
+      <div class="sidebar-spacer"></div>
+      <div class="side-tip"><div class="tip-icon"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M8.2 14.5A6 6 0 1 1 15.8 14.5c-1 .8-1.5 1.7-1.6 2.5H9.8c-.1-.8-.6-1.7-1.6-2.5Z"/></svg></div><p class="tip-title">A little goes a long way</p><p class="tip-copy">Tracking small expenses today can make tomorrow feel lighter.</p></div>
+      <div class="sidebar-user"><div class="user-avatar" id="sidebarAvatar">M</div><div class="sidebar-user-text"><strong id="sidebarUserName">Your account</strong><span id="sidebarUserEmail">Signed in</span></div><button class="logout-icon" id="logoutBtn" title="Sign out" aria-label="Sign out"><svg viewBox="0 0 24 24"><path d="M10 5H5.5A1.5 1.5 0 0 0 4 6.5v11A1.5 1.5 0 0 0 5.5 19H10M14 8l4 4-4 4M8 12h10"/></svg></button></div>
+    </aside>
+
+    <main class="main-area" id="mainArea">
+      <header class="topbar"><button id="mobileMenu" class="mobile-menu" aria-label="Open navigation"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><div class="breadcrumb"><span>Workspace</span><span class="crumb-slash">/</span><strong id="breadcrumbTitle">Overview</strong></div><div class="topbar-right"><div class="today-chip"><span class="calendar-dot"></span><span id="todayLabel">Today</span></div><button class="btn btn-primary btn-top" id="topAddBtn"><span class="plus">+</span> Add expense</button></div></header>
+
+      <section id="overview" class="content-section overview-section">
+        <div class="page-intro"><div><div class="eyebrow dark-eyebrow"><span class="eyebrow-dot"></span> YOUR FINANCIAL SNAPSHOT</div><h1 id="greetingTitle">Good to see you.</h1><p class="page-subtitle">Here's how your spending is looking. One step at a time.</p></div><div class="intro-note"><span class="note-spark">✳</span><div><strong>Stay in the know</strong><span>Your latest numbers, all in one place.</span></div></div></div>
+
+        <div class="stat-grid">
+          <article class="stat-card stat-featured"><div class="stat-top"><span class="stat-label">TOTAL SPENT</span><span class="stat-icon stat-icon-light"><svg viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H20v14H6.5A2.5 2.5 0 0 1 4 16.5Z"/><path d="M4 8h16M15 12h5M17 15h.01"/></svg></span></div><div class="stat-value" id="totalSpent">₹0.00</div><div class="stat-foot"><span class="stat-foot-dot"></span><span>Across all recorded expenses</span></div><div class="feature-swoosh"></div></article>
+          <article class="stat-card"><div class="stat-top"><span class="stat-label">EXPENSES TRACKED</span><span class="stat-icon icon-violet"><svg viewBox="0 0 24 24"><path d="M7 4h10a2 2 0 0 1 2 2v14l-7-3.5L5 20V6a2 2 0 0 1 2-2Z"/><path d="M8.5 8.5h7M8.5 12h7"/></svg></span></div><div class="stat-value" id="expenseCount">0</div><div class="stat-foot"><span class="mini-badge badge-violet">ALL TIME</span><span>Transactions recorded</span></div></article>
+          <article class="stat-card"><div class="stat-top"><span class="stat-label">CATEGORIES</span><span class="stat-icon icon-mint"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v8.5h8.5M12 12l-6 6"/></svg></span></div><div class="stat-value" id="categoryCount">0</div><div class="stat-foot"><span class="mini-badge badge-mint">BREAKDOWN</span><span>Spending groups</span></div></article>
+        </div>
+
+        <div class="content-grid">
+          <section class="panel transactions-panel" id="transactions">
+            <div class="panel-heading"><div><div class="panel-overline">YOUR ACTIVITY</div><h2>Recent transactions</h2><p>All your spending, neatly organised.</p></div><button class="text-action" id="viewAllBtn">View all <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+            <div class="filters-bar"><label class="filter-search"><svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.2 4.2"/></svg><input id="filterCategory" list="categoryOptions" placeholder="Filter category" aria-label="Filter by category" /><datalist id="categoryOptions"><option value="Food"><option value="Travel"><option value="Shopping"><option value="Bills"><option value="Health"><option value="Entertainment"><option value="Education"><option value="Other"></datalist></label><label class="filter-date"><span>FROM</span><input type="date" id="filterStart" aria-label="Start date" /></label><label class="filter-date"><span>TO</span><input type="date" id="filterEnd" aria-label="End date" /></label><button class="btn btn-filter" id="applyFilters">Apply</button><button class="filter-reset" id="clearFilters" title="Clear filters" aria-label="Clear filters">↺</button></div>
+            <div class="table-wrap"><table class="transactions-table"><thead><tr><th>TRANSACTION</th><th>CATEGORY</th><th>DATE</th><th class="amount-col">AMOUNT</th><th class="action-col"> </th></tr></thead><tbody id="expenseRows"><tr><td colspan="5"><div class="loading-row"><span class="loader"></span> Loading your transactions…</div></td></tr></tbody></table></div>
+            <div class="table-footer"><span id="resultsLabel">Showing recent activity</span><div class="pagination"><button id="prevPage" aria-label="Previous page" disabled>‹</button><span id="pageLabel">1</span><button id="nextPage" aria-label="Next page" disabled>›</button></div></div>
+          </section>
+
+          <aside class="insights-column" id="insights">
+            <section class="panel category-panel"><div class="panel-heading compact-heading"><div><div class="panel-overline">WHERE IT GOES</div><h2>Spending by category</h2></div><span class="panel-corner-icon"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16"/><path d="m6.5 15 4-4 3 2 5.5-7"/></svg></span></div><div id="categoryBreakdown" class="category-breakdown"><div class="category-empty"><span class="empty-ring">◎</span><strong>Your insights will live here</strong><span>Add expenses to see your breakdown.</span></div></div><div class="category-total"><span>Total across categories</span><strong id="categoryTotal">₹0.00</strong></div></section>
+            <section class="soft-callout"><div class="callout-decor">✳</div><div class="callout-label">A HEALTHY HABIT</div><h3>Awareness comes first.</h3><p>You don't need to change every habit overnight. Start by noticing where your money goes.</p></section>
+          </aside>
+        </div>
+        <footer class="app-footer"><span>Made for mindful money moments.</span><span><span class="footer-status"></span> Your data is personal</span></footer>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="expenseModal" hidden>
+    <section class="expense-modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-top"><div><span class="modal-kicker">KEEP IT UP TO DATE</span><h2 id="modalTitle">Add an expense</h2><p>Little details add up to a clearer picture.</p></div><button class="modal-close" id="closeModal" aria-label="Close dialog">×</button></div>
+      <form id="expenseForm" class="expense-form">
+        <label class="field full-field"><span>What was it for?</span><input id="expenseTitle" maxlength="50" required placeholder="e.g. Weekly groceries" /></label>
+        <div class="form-two-col"><label class="field"><span>Amount (₹)</span><div class="amount-input"><span>₹</span><input id="expenseAmount" type="number" min="0.01" step="0.01" max="99999999.99" required placeholder="0.00" /></div></label><label class="field"><span>Category</span><input id="expenseCategory" list="categoryOptions" maxlength="50" required placeholder="e.g. Food" /></label></div>
+        <div class="form-two-col"><label class="field"><span>Date</span><input id="expenseDate" type="date" required /></label><label class="field"><span>Description <small>OPTIONAL</small></span><input id="expenseDescription" maxlength="100" placeholder="Add a short note" /></label></div>
+        <div id="expenseFormError" class="form-error" role="alert" hidden></div>
+        <div class="modal-actions"><button class="btn btn-quiet" id="cancelModal" type="button">Cancel</button><button class="btn btn-primary" id="saveExpenseBtn" type="submit"><span>Save expense</span><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+      </form>
+    </section>
+  </div>
+
+  <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+  <script src="/frontend/app.js" defer></script>
+</body>
+</html>
