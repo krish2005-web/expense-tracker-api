@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from routers.auth import router as auth_router
 from routers.expenses import router as expense_router
+from routers.budget import router as budget_router
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR / "frontend"
@@ -19,6 +20,7 @@ app = FastAPI(
 
 app.include_router(auth_router)
 app.include_router(expense_router)
+app.include_router(budget_router)
 
 app.mount(
     "/frontend",
