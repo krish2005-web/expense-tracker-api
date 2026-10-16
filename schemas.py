@@ -62,3 +62,47 @@ class LoginUser(BaseModel):
 class LoginResponse(BaseModel):
     access_token:str
     token_type:str
+
+class MonthlySummaryItem(BaseModel):
+    month:int=Field(ge=1,le=12)
+    total_spent:Decimal
+    expense_count:int=Field(ge=0)
+
+class MonthlyAnalyticsResponse(BaseModel):
+    year:int
+    total_spent:Decimal
+    monthly_summary:list[MonthlySummaryItem]
+
+class BudgetCreate(BaseModel):
+    amount:Decimal=Field(gt=0,max_digits=10,decimal_places=2)
+    category:str=Field(min_length=1,max_length=50)
+    month:int=Field(ge=1,le=12)
+    year:int=Field(ge=2000,le=2100)
+
+class BudgetResponse(BaseModel):
+    model_config=ConfigDict(from_attributes=True)
+    
+    id:int
+    amount:Decimal
+    category:str
+    month:int
+    year:int
+    user_id:int
+
+class BudgetSummaryResponse(BaseModel):
+
+    budget_id:int
+    category:str
+    month:int
+    year:int
+    budget_amount:Decimal
+    total_spent:Decimal
+    remaining_amount:Decimal
+    used_percentage:float
+
+class BudgetUpdate(BaseModel):
+    amount:Decimal|None=Field(default=None,gt=0,max_digits=10,decimal_places=2) 
+    category:str|None=Field(default=None,min_length=1,max_length=50) 
+    month:int|None=Field(default=None,ge=1,le=12)  
+    year:int|None=Field(default=None,ge=2000,le=2100)  
+
