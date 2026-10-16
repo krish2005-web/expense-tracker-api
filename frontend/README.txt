@@ -1,15 +1,21 @@
-MONETA FRONTEND — API CONNECTED
+MONETA FRONTEND — ANALYTICS FIX
 ================================
 
-This is a standalone frontend folder for the FastAPI project in the uploaded ZIP.
-It uses the same-origin FastAPI routes; no separate frontend server or API URL is needed.
+This folder is designed to be copied into the root of the existing FastAPI project as `frontend/`.
+It uses same-origin API paths; no separate frontend service or API base URL is needed.
 
 INSTALL
-1. Extract this folder.
-2. Copy the entire `frontend` folder into the root of your existing `expense_tracker_api` project, replacing the old frontend files when prompted.
-3. Keep your existing `main.py` setup that mounts `/frontend` with StaticFiles and serves `frontend/index.html` at `/`.
-4. Commit and push the changed frontend files to the GitHub repository connected to Render.
-5. Wait for Render to deploy, then open the service root URL.
+1. Download and extract this ZIP.
+2. Copy the `frontend` folder into `D:\expense_tracker_api`, replacing the existing frontend files.
+3. Keep the existing `main.py` mount for `/frontend` and the root route serving `frontend/index.html`.
+4. Commit/push only the frontend changes to your connected GitHub branch and wait for Render to deploy.
+5. Hard-refresh the website (Ctrl+F5) after deployment.
+
+FIXES IN THIS VERSION
+- Spending insights uses `/expenses/analytics/monthly?year=...` when available.
+- If that analytics endpoint is missing in the deployed backend, the UI falls back to the existing authenticated `/expenses/` endpoint and calculates the 12 monthly totals client-side. This avoids showing the raw `Not Found` response in the chart while the backend deployment is being reconciled.
+- Year selector supports 2000–2100, matching the backend's year validation range.
+- Yearly total, highest month, monthly average, and bar chart are built from the selected year's monthly records.
 
 API ROUTES USED
 - POST /auth/register
@@ -20,7 +26,7 @@ API ROUTES USED
 - PATCH /expenses/{expense_id}
 - DELETE /expenses/{expense_id}
 - GET /expenses/summary
-- GET /expenses/analytics/monthly?year=
+- GET /expenses/analytics/monthly?year= (with client-side fallback)
 - POST /budgets/
 - GET /budgets/
 - GET /budgets/{budget_id}
@@ -31,13 +37,12 @@ API ROUTES USED
 FEATURES
 - Sign up / sign in and bearer-token authentication
 - Dashboard summary and category breakdown
-- Expense create, list, filters, pagination, view-for-edit, update, delete
-- Monthly analytics by year, 12-month chart, category mix
-- Budget create, list, month/year filtering, progress summaries, update and delete
+- Expense create, list, filters, pagination, edit and delete
+- Monthly analytics by selected year and 12-month bar chart
+- Budget create, list, month/year filtering, progress summaries, edit and delete
 - Responsive desktop/mobile layout
 
 NOTES
-- Uses your existing FastAPI backend and exact API paths from the uploaded project.
 - Does not contain environment variables or database credentials.
-- The app stores the JWT token in browser localStorage and clears it when a 401 response indicates the session expired.
-- Budget summaries are returned by the backend per budget. If the backend returns an error for a particular summary, the card falls back to showing the budget with zero spend.
+- This is a frontend-only change. Do not reset or modify the production database to install it.
+- The analytics fallback still requires a valid signed-in session and the existing GET /expenses/ endpoint.

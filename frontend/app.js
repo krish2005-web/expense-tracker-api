@@ -26,7 +26,7 @@
   $('#logoutBtn').addEventListener('click',()=>logout());
   function goPage(page){if(!['overview','transactions','analytics','budgets'].includes(page))page='overview';state.page=page;$$('.page').forEach(p=>p.classList.toggle('active',p.id===`page-${page}`));$$('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.page===page));const title={overview:'Overview',transactions:'Transactions',analytics:'Spending insights',budgets:'Budgets'}[page];$('#topPageName').textContent=title;$('#sidebar').classList.remove('open');if(page==='transactions')loadExpenses();if(page==='analytics')loadAnalytics();if(page==='budgets')loadBudgets();}
   $$('.nav-link').forEach(b=>b.addEventListener('click',()=>goPage(b.dataset.page)));$$('[data-go]').forEach(b=>b.addEventListener('click',()=>goPage(b.dataset.go)));$('#menuToggle').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
-  function initPickers(){const now=new Date(),year=now.getFullYear();const sel=$('#analyticsYear');if(!sel.options.length){for(let y=year+1;y>=year-8;y--){const o=document.createElement('option');o.value=y;o.textContent=y;if(y===year)o.selected=true;sel.append(o);}}$('#budgetMonthPicker').value=`${year}-${String(now.getMonth()+1).padStart(2,'0')}`;$('#budgetMonth').value=now.getMonth()+1;$('#budgetYear').value=year;}
+  function initPickers(){const now=new Date(),year=now.getFullYear();const sel=$('#analyticsYear');if(!sel.options.length){for(let y=2100;y>=2000;y--){const o=document.createElement('option');o.value=y;o.textContent=y;if(y===year)o.selected=true;sel.append(o);}}$('#budgetMonthPicker').value=`${year}-${String(now.getMonth()+1).padStart(2,'0')}`;$('#budgetMonth').value=now.getMonth()+1;$('#budgetYear').value=year;}
   async function refreshAll(){await Promise.allSettled([loadSummary(),loadExpenses(true),loadBudgets(true)]);renderOverview();}
   async function loadSummary(){try{state.summary=await api('/expenses/summary');renderSummary();}catch(e){toast(e.message,'error');}}
   function renderSummary(){const s=state.summary||{total_spent:0,expense_count:0,category_summary:[]};$('#totalSpent').textContent=money(s.total_spent);$('#expenseCount').textContent=Number(s.expense_count||0).toLocaleString('en-IN');$('#categoryCount').textContent=(s.category_summary||[]).length;$('#categoryTotal').textContent=money(s.total_spent);renderCategoryChart($('#categoryChart'),s.category_summary||[],Number(s.total_spent||0));renderCategoryChart($('#analyticsCategories'),s.category_summary||[],Number(s.total_spent||0));}
@@ -43,7 +43,50 @@
   async function askConfirm(title,message,action='Delete'){ $('#confirmTitle').textContent=title;$('#confirmMessage').textContent=message;$('#confirmOkay').textContent=action;openModal('confirmModal');return new Promise(resolve=>{state.confirmResolve=resolve;}); }
   function finishConfirm(value){closeModal('confirmModal');if(state.confirmResolve){state.confirmResolve(value);state.confirmResolve=null;}}$('#confirmCancel').addEventListener('click',()=>finishConfirm(false));$('#confirmOkay').addEventListener('click',()=>finishConfirm(true));
   document.addEventListener('click',async e=>{const edit=e.target.closest('[data-edit-expense]');const del=e.target.closest('[data-delete-expense]');if(edit){const id=Number(edit.dataset.editExpense);try{const item=await api(`/expenses/${id}`);openExpense(item);}catch(err){toast(err.message,'error');}}if(del){const id=Number(del.dataset.deleteExpense);const ok=await askConfirm('Delete this expense?','This transaction will be permanently removed from your expense history.');if(!ok)return;try{await api(`/expenses/${id}`,{method:'DELETE'});toast('Expense deleted.');if(state.expenses.length===1&&state.pageNum>1)state.pageNum--;await Promise.allSettled([loadSummary(),loadExpenses(true)]);state.allExpenses=await api('/expenses/?page=1&limit=10').catch(()=>[]);renderOverview();}catch(err){toast(err.message,'error');}}});
-  async function loadAnalytics(){const year=Number($('#analyticsYear').value||new Date().getFullYear());$('#monthlyChart').innerHTML='<div class="loading-state">Loading monthly insights…</div>';try{const [monthly,summary]=await Promise.all([api(`/expenses/analytics/monthly?year=${year}`),api('/expenses/summary')]);state.monthly=monthly;const rows=monthly.monthly_summary||[];$('#analyticsTotal').textContent=money(monthly.total_spent);const high=[...rows].sort((a,b)=>Number(b.total_spent)-Number(a.total_spent))[0];$('#highestMonth').textContent=high&&Number(high.total_spent)>0?monthName(high.month).slice(0,3):'—';$('#highestMonthValue').textContent=high&&Number(high.total_spent)>0?money(high.total_spent):'No spending recorded';$('#monthlyAverage').textContent=money(Number(monthly.total_spent||0)/12);const max=Math.max(...rows.map(r=>Number(r.total_spent||0)),1);$('#monthlyChart').innerHTML=rows.map(r=>{const value=Number(r.total_spent||0),h=Math.max(value?3:0,value/max*100);return `<div class="month-column" title="${esc(monthName(r.month))}: ${money(value)} · ${r.expense_count} expenses"><div class="month-bar-area"><div class="month-bar ${r.month===new Date().getMonth()+1&&year===new Date().getFullYear()?'current':''}" style="height:${h}%"></div></div><span>${monthName(r.month).slice(0,1)}</span><strong>${value?compactMoney(value):'—'}</strong></div>`}).join('');renderCategoryChart($('#analyticsCategories'),summary.category_summary||[],Number(summary.total_spent||0));}catch(err){$('#monthlyChart').innerHTML=`<div class="empty-state">${esc(err.message)}</div>`;toast(err.message,'error');}}
+  async function analyticsFromExpenseRecords(year){
+    // Compatibility fallback for deployments where the monthly analytics route
+    // has not been redeployed yet. Use the existing, authenticated expense API.
+    const collected=[];
+    for(let page=1;page<=1000;page++){
+      const rows=await api(`/expenses/?start_date=${year}-01-01&end_date=${year}-12-31&page=${page}&limit=100`);
+      if(!Array.isArray(rows))throw new Error('The expenses API returned an unexpected response.');
+      collected.push(...rows);
+      if(rows.length<100)break;
+    }
+    const byMonth=Array.from({length:12},(_,i)=>({month:i+1,total_spent:0,expense_count:0}));
+    for(const expense of collected){
+      const month=Number(String(expense.expense_date||'').slice(5,7));
+      if(month>=1&&month<=12){byMonth[month-1].total_spent+=Number(expense.amount||0);byMonth[month-1].expense_count+=1;}
+    }
+    byMonth.forEach(row=>{row.total_spent=Number(row.total_spent.toFixed(2));});
+    return {year,total_spent:Number(byMonth.reduce((sum,row)=>sum+row.total_spent,0).toFixed(2)),monthly_summary:byMonth};
+  }
+  async function loadAnalytics(){
+    const year=Number($('#analyticsYear').value||new Date().getFullYear());
+    $('#monthlyChart').innerHTML='<div class="loading-state">Loading monthly insights…</div>';
+    try{
+      let monthly;
+      try{monthly=await api(`/expenses/analytics/monthly?year=${year}`);}
+      catch(routeError){monthly=await analyticsFromExpenseRecords(year);}
+      const summary=await api('/expenses/summary');
+      state.monthly=monthly;
+      const rows=monthly.monthly_summary||[];
+      $('#analyticsTotal').textContent=money(monthly.total_spent);
+      const high=[...rows].sort((a,b)=>Number(b.total_spent)-Number(a.total_spent))[0];
+      $('#highestMonth').textContent=high&&Number(high.total_spent)>0?monthName(high.month).slice(0,3):'—';
+      $('#highestMonthValue').textContent=high&&Number(high.total_spent)>0?money(high.total_spent):'No spending recorded';
+      $('#monthlyAverage').textContent=money(Number(monthly.total_spent||0)/12);
+      const max=Math.max(...rows.map(r=>Number(r.total_spent||0)),1);
+      $('#monthlyChart').innerHTML=rows.map(r=>{
+        const value=Number(r.total_spent||0),h=Math.max(value?3:0,value/max*100);
+        return `<div class="month-column" title="${esc(monthName(r.month))}: ${money(value)} · ${r.expense_count} expenses"><div class="month-bar-area"><div class="month-bar ${r.month===new Date().getMonth()+1&&year===new Date().getFullYear()?'current':''}" style="height:${h}%"></div></div><span>${monthName(r.month).slice(0,1)}</span><strong>${value?compactMoney(value):'—'}</strong></div>`;
+      }).join('');
+      renderCategoryChart($('#analyticsCategories'),summary.category_summary||[],Number(summary.total_spent||0));
+    }catch(err){
+      $('#monthlyChart').innerHTML=`<div class="empty-state">${esc(err.message)}. Check the expenses endpoint and sign-in session.</div>`;
+      toast(err.message,'error');
+    }
+  }
   function compactMoney(v){return v>=100000?`₹${(v/100000).toFixed(1)}L`:v>=1000?`₹${(v/1000).toFixed(1)}k`:`₹${Math.round(v)}`;}$('#analyticsYear').addEventListener('change',loadAnalytics);
   async function loadBudgets(silent=false){try{state.budgets=await api('/budgets/');state.budgetSummaries={};await Promise.all(state.budgets.map(async b=>{try{state.budgetSummaries[b.id]=await api(`/budgets/${b.id}/summary`);}catch(e){state.budgetSummaries[b.id]=null;}}));$('#budgetCount').textContent=state.budgets.length;renderBudgets();renderBudgetPreview();}catch(err){if(!silent)toast(err.message,'error');$('#budgetsGrid').innerHTML=`<div class="empty-state">${esc(err.message)}</div>`;}}
   function selectedBudgetMonth(){const v=$('#budgetMonthPicker').value||`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;const [year,month]=v.split('-').map(Number);return {year,month};}
