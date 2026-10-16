@@ -93,6 +93,87 @@
   }
   function renderOverview(){renderSummary();renderBudgetAlerts();const list=state.allExpenses||state.expenses||[];const recent=$('#recentTransactions');if(!list.length){recent.innerHTML='<div class="empty-state">No transactions yet. Add your first expense to get started.</div>';}else recent.innerHTML=list.slice(0,5).map(x=>`<div class="recent-item"><div class="category-icon ${categoryClass(x.category)}">${iconFor(x.category)}</div><div class="recent-copy"><strong>${esc(x.title)}</strong><span>${esc(x.category)} · ${fmtDate(x.expense_date)}</span></div><div class="recent-amount">${money(x.amount)}</div></div>`).join('');$('#recentFoot').textContent=`${list.length} recent transaction${list.length===1?'':'s'}`;renderBudgetPreview();}
   $('#topAddExpense').addEventListener('click',()=>openExpense());$('#transactionsAdd').addEventListener('click',()=>openExpense());$('#applyFilters').addEventListener('click',()=>{state.pageNum=1;loadExpenses();});$('#clearFilters').addEventListener('click',()=>{$('#filterCategory').value='';$('#filterStart').value='';$('#filterEnd').value='';state.pageNum=1;loadExpenses();});$('#prevPage').addEventListener('click',()=>{if(state.pageNum>1){state.pageNum--;loadExpenses();}});$('#nextPage').addEventListener('click',()=>{if(state.pageNum*state.limit<state.filteredCount){state.pageNum++;loadExpenses();}});$('#pageLimit').addEventListener('change',()=>{state.limit=Number($('#pageLimit').value);state.pageNum=1;loadExpenses();});
+  $('#exportCsvBtn').addEventListener('click', async () => {
+    const button = $('#exportCsvBtn');
+    const originalLabel = button.textContent;
+    const category = $('#filterCategory').value.trim();
+    const startDate = $('#filterStart').value;
+    const endDate = $('#filterEnd').value;
+
+    if (startDate && endDate && startDate > endDate) {
+      toast('From date cannot be after To date.', 'error');
+      return;
+    }
+    if (!state.token) {
+      toast('Please sign in again before exporting.', 'error');
+      logout(false);
+      return;
+    }
+
+    const params = new URLSearchParams();
+    if (category) params.set('category', category);
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
+    const query = params.toString();
+    const url = `/expenses/export/csv${query ? `?${query}` : ''}`;
+
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    button.textContent = 'Preparing CSV…';
+
+    try {
+      // Use raw fetch instead of api(): CSV is a file response, not JSON.
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${state.token}`,
+          Accept: 'text/csv'
+        }
+      });
+
+      if (!response.ok) {
+        const responseText = await response.text();
+        let message = `CSV export failed (${response.status}).`;
+        try {
+          const errorBody = JSON.parse(responseText);
+          if (typeof errorBody.detail === 'string') message = errorBody.detail;
+          else if (Array.isArray(errorBody.detail)) {
+            message = errorBody.detail.map(item => item.msg || 'Invalid request').join(', ');
+          }
+        } catch {
+          if (responseText.trim()) message = responseText.trim().slice(0, 220);
+        }
+        if (response.status === 401) {
+          logout(false);
+          throw new Error('Your session expired. Please sign in again.');
+        }
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const filenameMatch = disposition.match(/filename\s*=\s*"?([^";]+)"?/i);
+      const filename = filenameMatch?.[1]?.trim() || 'moneta-expenses.csv';
+      link.href = objectUrl;
+      link.download = /^[a-zA-Z0-9._-]+$/.test(filename) ? filename : 'moneta-expenses.csv';
+      link.hidden = true;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Delay revocation slightly so browsers can begin the download.
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      toast('CSV downloaded successfully.');
+    } catch (error) {
+      toast(error.message || 'Unable to export CSV. Please try again.', 'error');
+    } finally {
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+      button.textContent = originalLabel;
+    }
+  });
+
   function openModal(id){$( `#${id}`).hidden=false;document.body.style.overflow='hidden';}function closeModal(id){$(`#${id}`).hidden=true;document.body.style.overflow='';}
   $$('[data-close]').forEach(b=>b.addEventListener('click',()=>closeModal(b.dataset.close)));$$('.modal-backdrop').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)closeModal(m.id)}));document.addEventListener('keydown',e=>{if(e.key==='Escape')$$('.modal-backdrop').forEach(m=>{if(!m.hidden)closeModal(m.id)});});
   function openExpense(item=null){state.editingExpense=item?item.id:null;$('#expenseForm').reset();$('#expenseError').hidden=true;$('#expenseModalTitle').textContent=item?'Edit expense':'Add an expense';$('#saveExpenseBtn').textContent=item?'Save changes ↗':'Save expense ↗';$('#expenseTitle').value=item?.title||'';$('#expenseAmount').value=item?.amount||'';$('#expenseCategory').value=item?.category||'';$('#expenseDate').value=item?.expense_date||dateToday();$('#expenseDescription').value=item?.description||'';openModal('expenseModal');$('#expenseTitle').focus();}

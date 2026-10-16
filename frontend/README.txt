@@ -47,3 +47,10 @@ NOTES
 - It contains no credentials or environment variables.
 - Budget values are calculated for each budget's category, month, and year from the signed-in user's expenses. Category “share of spending” is a different measure: category total divided by the selected total.
 - The frontend has been syntax-checked and its ZIP structure verified, but the authenticated live Render flow has not been end-to-end tested from this environment.
+
+
+CSV EXPORT BUTTON
+- Transactions includes an Export CSV button that calls GET /expenses/export/csv.
+- The current category, start date, and end date fields are sent to the API.
+- The request uses the saved Moneta bearer token and downloads the CSV response as a file.
+- The API endpoint must already exist in the backend. Category matching follows the backend endpoint's current filter behavior.
