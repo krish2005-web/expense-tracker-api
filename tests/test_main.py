@@ -8,11 +8,13 @@ from fastapi.testclient import TestClient
 from main import app
 from schemas import ExpenseCreate
 
+import csv
+
 
 client = TestClient(app)
 
 
-# ---------- Reusable helpers ----------
+
 
 def register_and_login(
     email="testuser@example.com",
@@ -701,3 +703,159 @@ def test_user_cannot_access_another_users_budget():
     assert summary_response.status_code == 404
     assert patch_response.status_code == 404
     assert delete_response.status_code == 404
+
+
+
+def parse_csv_response(response):
+    content = response.text.lstrip("\ufeff")
+    return list(csv.reader(content.splitlines()))
+
+
+def test_export_expenses_csv():
+    headers, _ = register_and_login(
+        email="csv_export@example.com"
+    )
+
+    create_expense(
+        headers,
+        title="Groceries",
+        amount=500,
+        category="food",
+        expense_date="2026-10-10"
+    )
+
+    create_expense(
+        headers,
+        title="Bus Ticket",
+        amount=100,
+        category="travel",
+        expense_date="2026-10-11"
+    )
+
+    response = client.get(
+        "/expenses/export/csv",
+        headers=headers
+    )
+
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["content-type"]
+    assert "attachment" in response.headers["content-disposition"]
+
+    rows = parse_csv_response(response)
+
+    assert rows[0] == [
+        "ID",
+        "Title",
+        "Category",
+        "Amount",
+        "Description",
+        "Expense Date",
+        "Created At"
+    ]
+
+    exported_titles = {row[1] for row in rows[1:]}
+
+    assert "Groceries" in exported_titles
+    assert "Bus Ticket" in exported_titles
+
+
+def test_export_csv_category_and_date_filters():
+    headers, _ = register_and_login(
+        email="csv_filter@example.com"
+    )
+
+    create_expense(
+        headers,
+        title="October Food",
+        category="food",
+        expense_date="2026-10-10"
+    )
+
+    create_expense(
+        headers,
+        title="November Food",
+        category="food",
+        expense_date="2026-11-10"
+    )
+
+    create_expense(
+        headers,
+        title="October Travel",
+        category="travel",
+        expense_date="2026-10-15"
+    )
+
+    response = client.get(
+        "/expenses/export/csv",
+        headers=headers,
+        params={
+            "category": "food",
+            "start_date": "2026-10-01",
+            "end_date": "2026-10-31"
+        }
+    )
+
+    assert response.status_code == 200
+
+    rows = parse_csv_response(response)
+    exported_titles = {row[1] for row in rows[1:]}
+
+    assert exported_titles == {"October Food"}
+
+
+def test_export_csv_invalid_date_range():
+    headers, _ = register_and_login(
+        email="csv_invalid_dates@example.com"
+    )
+
+    response = client.get(
+        "/expenses/export/csv",
+        headers=headers,
+        params={
+            "start_date": "2026-10-31",
+            "end_date": "2026-10-01"
+        }
+    )
+
+    assert response.status_code == 400
+
+
+def test_export_csv_requires_authentication():
+    response = client.get("/expenses/export/csv")
+
+    assert response.status_code == 401
+
+
+def test_export_csv_only_contains_current_users_expenses():
+    headers_a, _ = register_and_login(
+        email="csv_user_a@example.com"
+    )
+
+    headers_b, _ = register_and_login(
+        email="csv_user_b@example.com"
+    )
+
+    create_expense(
+        headers_a,
+        title="User A Expense",
+        category="food"
+    )
+
+    create_expense(
+        headers_b,
+        title="User B Expense",
+        category="travel"
+    )
+
+    response = client.get(
+        "/expenses/export/csv",
+        headers=headers_a
+    )
+
+    assert response.status_code == 200
+
+    rows = parse_csv_response(response)
+    exported_titles = {row[1] for row in rows[1:]}
+
+    assert "User A Expense" in exported_titles
+    assert "User B Expense" not in exported_titles
