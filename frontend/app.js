@@ -2,7 +2,7 @@
   'use strict';
   const $ = (s, root=document) => root.querySelector(s);
   const $$ = (s, root=document) => [...root.querySelectorAll(s)];
-  const state = { token: localStorage.getItem('moneta_token') || '', email: localStorage.getItem('moneta_email') || '', name: localStorage.getItem('moneta_name') || '', authMode:'login', page:'overview', expenses:[], allExpenses:[], summary:null, budgets:[], budgetSummaries:{}, pageNum:1, limit:10, editingExpense:null, editingBudget:null, confirmResolve:null, monthly:null };
+  const state = { token: localStorage.getItem('moneta_token') || '', email: localStorage.getItem('moneta_email') || '', name: localStorage.getItem('moneta_name') || '', authMode:'login', page:'overview', expenses:[], allExpenses:[], summary:null, budgets:[], budgetSummaries:{}, pageNum:1, limit:10, filteredCount:0, expenseCache:[], expenseCacheReady:false, editingExpense:null, editingBudget:null, confirmResolve:null, monthly:null };
   const money = v => new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v||0));
   const dateToday = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
   const monthName = n => new Date(2000, Number(n)-1, 1).toLocaleString('en-IN',{month:'long'});
@@ -26,16 +26,68 @@
   $('#logoutBtn').addEventListener('click',()=>logout());
   function goPage(page){if(!['overview','transactions','analytics','budgets'].includes(page))page='overview';state.page=page;$$('.page').forEach(p=>p.classList.toggle('active',p.id===`page-${page}`));$$('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.page===page));const title={overview:'Overview',transactions:'Transactions',analytics:'Spending insights',budgets:'Budgets'}[page];$('#topPageName').textContent=title;$('#sidebar').classList.remove('open');if(page==='transactions')loadExpenses();if(page==='analytics')loadAnalytics();if(page==='budgets')loadBudgets();}
   $$('.nav-link').forEach(b=>b.addEventListener('click',()=>goPage(b.dataset.page)));$$('[data-go]').forEach(b=>b.addEventListener('click',()=>goPage(b.dataset.go)));$('#menuToggle').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
-  function initPickers(){const now=new Date(),year=now.getFullYear();const sel=$('#analyticsYear');if(!sel.options.length){for(let y=2100;y>=2000;y--){const o=document.createElement('option');o.value=y;o.textContent=y;if(y===year)o.selected=true;sel.append(o);}}$('#budgetMonthPicker').value=`${year}-${String(now.getMonth()+1).padStart(2,'0')}`;$('#budgetMonth').value=now.getMonth()+1;$('#budgetYear').value=year;}
+  function initPickers(){const now=new Date(),year=now.getFullYear();const sel=$('#analyticsYear');if(!sel.options.length){for(let y=2100;y>=2000;y--){const o=document.createElement('option');o.value=y;o.textContent=y;if(y===year)o.selected=true;sel.append(o);}}$('#budgetMonthPicker').value=`${year}-${String(now.getMonth()+1).padStart(2,'0')}`;$('#budgetMonth').value=now.getMonth()+1;$('#budgetYear').value=year;$('#comparisonMonth').value=String(now.getMonth()+1);}
   async function refreshAll(){await Promise.allSettled([loadSummary(),loadExpenses(true),loadBudgets(true)]);renderOverview();}
   async function loadSummary(){try{state.summary=await api('/expenses/summary');renderSummary();}catch(e){toast(e.message,'error');}}
   function renderSummary(){const s=state.summary||{total_spent:0,expense_count:0,category_summary:[]};$('#totalSpent').textContent=money(s.total_spent);$('#expenseCount').textContent=Number(s.expense_count||0).toLocaleString('en-IN');$('#categoryCount').textContent=(s.category_summary||[]).length;$('#categoryTotal').textContent=money(s.total_spent);renderCategoryChart($('#categoryChart'),s.category_summary||[],Number(s.total_spent||0));renderCategoryChart($('#analyticsCategories'),s.category_summary||[],Number(s.total_spent||0));}
   function renderCategoryChart(target,rows,total){if(!target)return;if(!rows.length){target.innerHTML='<div class="empty-state">No expenses yet. Add your first expense to see insights.</div>';return;}const sorted=[...rows].sort((a,b)=>Number(b.total_spent)-Number(a.total_spent));target.innerHTML=sorted.map(r=>{const pct=total?Math.min(100,Number(r.total_spent)/total*100):0;return `<div class="category-row"><div class="category-row-top"><span class="category-name"><i class="category-dot"></i>${esc(r.category)}</span><span class="category-value">${money(r.total_spent)}</span></div><div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div><div class="category-meta"><span>${r.expense_count} transaction${r.expense_count===1?'':'s'}</span><span>${pct.toFixed(1)}% of total</span></div></div>`}).join('');}
-  function queryParams(){const p=new URLSearchParams({page:String(state.pageNum),limit:String(state.limit)});const cat=$('#filterCategory').value.trim(),start=$('#filterStart').value,end=$('#filterEnd').value;if(cat)p.set('category',cat);if(start)p.set('start_date',start);if(end)p.set('end_date',end);return p.toString();}
-  async function loadExpenses(silent=false){const rows=$('#expenseRows');if(!silent&&rows)rows.innerHTML='<tr><td colspan="5"><div class="loading-state">Loading transactions…</div></td></tr>';try{if($('#filterStart').value&&$('#filterEnd').value&&$('#filterStart').value>$('#filterEnd').value)throw new Error('Start date cannot be later than end date.');state.expenses=await api(`/expenses/?${queryParams()}`);renderExpenseTable();if(state.page==='overview'){state.allExpenses=await api('/expenses/?page=1&limit=10');renderOverview();}}catch(e){if(rows)rows.innerHTML=`<tr><td colspan="5"><div class="empty-state">${esc(e.message)}</div></td></tr>`;if(!silent)toast(e.message,'error');}}
-  function renderExpenseTable(){const rows=$('#expenseRows'),data=state.expenses||[];if(!data.length){rows.innerHTML='<tr><td colspan="5"><div class="empty-state">No expenses found for these filters.</div></td></tr>';}else rows.innerHTML=data.map(x=>`<tr><td><div class="transaction-cell"><div class="category-icon ${categoryClass(x.category)}">${iconFor(x.category)}</div><div><strong>${esc(x.title)}</strong><small>${esc(x.description||'Expense')} · #${x.id}</small></div></div></td><td><span class="category-pill">${esc(x.category)}</span></td><td>${fmtDate(x.expense_date)}</td><td class="table-amount">${money(x.amount)}</td><td><div class="row-actions"><button class="row-action" data-edit-expense="${x.id}" title="Edit expense" aria-label="Edit expense">✎</button><button class="row-action" data-delete-expense="${x.id}" title="Delete expense" aria-label="Delete expense">⌫</button></div></td></tr>`).join('');$('#pageLabel').textContent=`Page ${state.pageNum}`;$('#resultsLabel').textContent=`Showing ${data.length} expense${data.length===1?'':'s'} · ${state.limit} per page`;$('#prevPage').disabled=state.pageNum<=1;$('#nextPage').disabled=data.length<state.limit;}
-  function renderOverview(){renderSummary();const list=state.allExpenses||state.expenses||[];const recent=$('#recentTransactions');if(!list.length){recent.innerHTML='<div class="empty-state">No transactions yet. Add your first expense to get started.</div>';}else recent.innerHTML=list.slice(0,5).map(x=>`<div class="recent-item"><div class="category-icon ${categoryClass(x.category)}">${iconFor(x.category)}</div><div class="recent-copy"><strong>${esc(x.title)}</strong><span>${esc(x.category)} · ${fmtDate(x.expense_date)}</span></div><div class="recent-amount">${money(x.amount)}</div></div>`).join('');$('#recentFoot').textContent=`${list.length} recent transaction${list.length===1?'':'s'}`;renderBudgetPreview();}
-  $('#topAddExpense').addEventListener('click',()=>openExpense());$('#transactionsAdd').addEventListener('click',()=>openExpense());$('#applyFilters').addEventListener('click',()=>{state.pageNum=1;loadExpenses();});$('#clearFilters').addEventListener('click',()=>{$('#filterCategory').value='';$('#filterStart').value='';$('#filterEnd').value='';state.pageNum=1;loadExpenses();});$('#prevPage').addEventListener('click',()=>{if(state.pageNum>1){state.pageNum--;loadExpenses();}});$('#nextPage').addEventListener('click',()=>{if(state.expenses.length>=state.limit){state.pageNum++;loadExpenses();}});$('#pageLimit').addEventListener('change',()=>{state.limit=Number($('#pageLimit').value);state.pageNum=1;loadExpenses();});
+  async function fetchAllExpenses(){
+    // The backend currently matches category text case-sensitively. Fetch this user's
+    // paginated records without filters so UI filtering can be case-insensitive and inclusive.
+    const all=[];let apiPage=1;
+    while(apiPage<=1000){
+      const batch=await api(`/expenses/?page=${apiPage}&limit=100`);
+      if(!Array.isArray(batch))throw new Error('The expenses API returned an unexpected response.');
+      all.push(...batch);
+      if(batch.length<100) return all;
+      apiPage+=1;
+    }
+    throw new Error('Too many transactions to filter at once. Please narrow the range or contact support.');
+  }
+  function filterExpenses(expenses){
+    const category=$('#filterCategory').value.trim().toLocaleLowerCase();
+    const start=$('#filterStart').value;
+    const end=$('#filterEnd').value;
+    return expenses.filter(expense=>{
+      const actualCategory=String(expense.category||'').trim().toLocaleLowerCase();
+      const expenseDate=String(expense.expense_date||'').slice(0,10);
+      const categoryMatches=!category||actualCategory.includes(category);
+      const startMatches=!start||(expenseDate&&expenseDate>=start);
+      const endMatches=!end||(expenseDate&&expenseDate<=end);
+      return categoryMatches&&startMatches&&endMatches;
+    });
+  }
+  async function loadExpenses(silent=false){
+    const rows=$('#expenseRows');
+    if(!silent&&rows)rows.innerHTML='<tr><td colspan="5"><div class="loading-state">Loading transactions…</div></td></tr>';
+    try{
+      const start=$('#filterStart').value,end=$('#filterEnd').value;
+      if(start&&end&&start>end)throw new Error('Start date cannot be later than end date.');
+      const all=await fetchAllExpenses();
+      state.expenseCache=all;state.expenseCacheReady=true;
+      const filtered=filterExpenses(all);
+      state.filteredCount=filtered.length;
+      const first=(state.pageNum-1)*state.limit;
+      if(first>=state.filteredCount&&state.pageNum>1){state.pageNum=Math.max(1,Math.ceil(state.filteredCount/state.limit));}
+      const offset=(state.pageNum-1)*state.limit;
+      state.expenses=filtered.slice(offset,offset+state.limit);
+      renderExpenseTable();
+      if(state.budgets.length){renderBudgets();renderBudgetPreview();renderBudgetAlerts();}
+      if(state.page==='overview'){state.allExpenses=all.slice(0,10);renderOverview();}
+    }catch(e){if(rows)rows.innerHTML=`<tr><td colspan="5"><div class="empty-state">${esc(e.message)}</div></td></tr>`;if(!silent)toast(e.message,'error');}
+  }
+  function renderExpenseTable(){
+    const rows=$('#expenseRows'),data=state.expenses||[],total=state.filteredCount||0;
+    if(!data.length){rows.innerHTML='<tr><td colspan="5"><div class="empty-state">No expenses found for these filters. Try another category or date range.</div></td></tr>';}
+    else rows.innerHTML=data.map(x=>`<tr><td><div class="transaction-cell"><div class="category-icon ${categoryClass(x.category)}">${iconFor(x.category)}</div><div><strong>${esc(x.title)}</strong><small>${esc(x.description||'Expense')} · #${x.id}</small></div></div></td><td><span class="category-pill">${esc(x.category)}</span></td><td>${fmtDate(x.expense_date)}</td><td class="table-amount">${money(x.amount)}</td><td><div class="row-actions"><button class="row-action" data-edit-expense="${x.id}" title="Edit expense" aria-label="Edit expense">✎</button><button class="row-action" data-delete-expense="${x.id}" title="Delete expense" aria-label="Delete expense">⌫</button></div></td></tr>`).join('');
+    const first=total?((state.pageNum-1)*state.limit)+1:0,last=Math.min(state.pageNum*state.limit,total);
+    $('#pageLabel').textContent=`Page ${state.pageNum}`;
+    $('#resultsLabel').textContent=total?`Showing ${first}–${last} of ${total} expense${total===1?'':'s'} · ${state.limit} per page`:'Showing 0 expenses';
+    $('#prevPage').disabled=state.pageNum<=1;
+    $('#nextPage').disabled=state.pageNum*state.limit>=total;
+  }
+  function renderOverview(){renderSummary();renderBudgetAlerts();const list=state.allExpenses||state.expenses||[];const recent=$('#recentTransactions');if(!list.length){recent.innerHTML='<div class="empty-state">No transactions yet. Add your first expense to get started.</div>';}else recent.innerHTML=list.slice(0,5).map(x=>`<div class="recent-item"><div class="category-icon ${categoryClass(x.category)}">${iconFor(x.category)}</div><div class="recent-copy"><strong>${esc(x.title)}</strong><span>${esc(x.category)} · ${fmtDate(x.expense_date)}</span></div><div class="recent-amount">${money(x.amount)}</div></div>`).join('');$('#recentFoot').textContent=`${list.length} recent transaction${list.length===1?'':'s'}`;renderBudgetPreview();}
+  $('#topAddExpense').addEventListener('click',()=>openExpense());$('#transactionsAdd').addEventListener('click',()=>openExpense());$('#applyFilters').addEventListener('click',()=>{state.pageNum=1;loadExpenses();});$('#clearFilters').addEventListener('click',()=>{$('#filterCategory').value='';$('#filterStart').value='';$('#filterEnd').value='';state.pageNum=1;loadExpenses();});$('#prevPage').addEventListener('click',()=>{if(state.pageNum>1){state.pageNum--;loadExpenses();}});$('#nextPage').addEventListener('click',()=>{if(state.pageNum*state.limit<state.filteredCount){state.pageNum++;loadExpenses();}});$('#pageLimit').addEventListener('change',()=>{state.limit=Number($('#pageLimit').value);state.pageNum=1;loadExpenses();});
   function openModal(id){$( `#${id}`).hidden=false;document.body.style.overflow='hidden';}function closeModal(id){$(`#${id}`).hidden=true;document.body.style.overflow='';}
   $$('[data-close]').forEach(b=>b.addEventListener('click',()=>closeModal(b.dataset.close)));$$('.modal-backdrop').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)closeModal(m.id)}));document.addEventListener('keydown',e=>{if(e.key==='Escape')$$('.modal-backdrop').forEach(m=>{if(!m.hidden)closeModal(m.id)});});
   function openExpense(item=null){state.editingExpense=item?item.id:null;$('#expenseForm').reset();$('#expenseError').hidden=true;$('#expenseModalTitle').textContent=item?'Edit expense':'Add an expense';$('#saveExpenseBtn').textContent=item?'Save changes ↗':'Save expense ↗';$('#expenseTitle').value=item?.title||'';$('#expenseAmount').value=item?.amount||'';$('#expenseCategory').value=item?.category||'';$('#expenseDate').value=item?.expense_date||dateToday();$('#expenseDescription').value=item?.description||'';openModal('expenseModal');$('#expenseTitle').focus();}
@@ -61,13 +113,16 @@
     byMonth.forEach(row=>{row.total_spent=Number(row.total_spent.toFixed(2));});
     return {year,total_spent:Number(byMonth.reduce((sum,row)=>sum+row.total_spent,0).toFixed(2)),monthly_summary:byMonth};
   }
+  async function fetchMonthlyAnalytics(year){
+    try{return await api(`/expenses/analytics/monthly?year=${year}`);}
+    catch(routeError){return analyticsFromExpenseRecords(year);}
+  }
   async function loadAnalytics(){
     const year=Number($('#analyticsYear').value||new Date().getFullYear());
     $('#monthlyChart').innerHTML='<div class="loading-state">Loading monthly insights…</div>';
+    $('#comparisonBars').innerHTML='<div class="loading-state">Comparing monthly spending…</div>';
     try{
-      let monthly;
-      try{monthly=await api(`/expenses/analytics/monthly?year=${year}`);}
-      catch(routeError){monthly=await analyticsFromExpenseRecords(year);}
+      const monthly=await fetchMonthlyAnalytics(year);
       const summary=await api('/expenses/summary');
       state.monthly=monthly;
       const rows=monthly.monthly_summary||[];
@@ -82,17 +137,73 @@
         return `<div class="month-column" title="${esc(monthName(r.month))}: ${money(value)} · ${r.expense_count} expenses"><div class="month-bar-area"><div class="month-bar ${r.month===new Date().getMonth()+1&&year===new Date().getFullYear()?'current':''}" style="height:${h}%"></div></div><span>${monthName(r.month).slice(0,1)}</span><strong>${value?compactMoney(value):'—'}</strong></div>`;
       }).join('');
       renderCategoryChart($('#analyticsCategories'),summary.category_summary||[],Number(summary.total_spent||0));
+      await renderMonthlyComparison(year,monthly);
     }catch(err){
       $('#monthlyChart').innerHTML=`<div class="empty-state">${esc(err.message)}. Check the expenses endpoint and sign-in session.</div>`;
+      $('#comparisonBars').innerHTML=`<div class="empty-state">${esc(err.message)}</div>`;
       toast(err.message,'error');
     }
   }
-  function compactMoney(v){return v>=100000?`₹${(v/100000).toFixed(1)}L`:v>=1000?`₹${(v/1000).toFixed(1)}k`:`₹${Math.round(v)}`;}$('#analyticsYear').addEventListener('change',loadAnalytics);
-  async function loadBudgets(silent=false){try{state.budgets=await api('/budgets/');state.budgetSummaries={};await Promise.all(state.budgets.map(async b=>{try{state.budgetSummaries[b.id]=await api(`/budgets/${b.id}/summary`);}catch(e){state.budgetSummaries[b.id]=null;}}));$('#budgetCount').textContent=state.budgets.length;renderBudgets();renderBudgetPreview();}catch(err){if(!silent)toast(err.message,'error');$('#budgetsGrid').innerHTML=`<div class="empty-state">${esc(err.message)}</div>`;}}
+  async function renderMonthlyComparison(year,monthly){
+    const month=Number($('#comparisonMonth').value||new Date().getMonth()+1);
+    const rows=monthly.monthly_summary||[];
+    const current=rows.find(r=>Number(r.month)===month)||{month,total_spent:0,expense_count:0};
+    let previousMonth=month===1?12:month-1;
+    let previousYear=month===1?year-1:year;
+    let previous={month:previousMonth,total_spent:0,expense_count:0};
+    let priorUnavailable=false;
+    if(month===1){
+      if(previousYear>=2000){
+        try{const previousAnnual=await fetchMonthlyAnalytics(previousYear);previous=(previousAnnual.monthly_summary||[]).find(r=>Number(r.month)===12)||previous;}
+        catch(e){priorUnavailable=true;}
+      }else{priorUnavailable=true;}
+    }else{
+      previous=rows.find(r=>Number(r.month)===previousMonth)||previous;
+    }
+    const currentValue=Number(current.total_spent||0),previousValue=Number(previous.total_spent||0),delta=Number((currentValue-previousValue).toFixed(2));
+    const pct=previousValue>0?(delta/previousValue)*100:null;
+    const currentLabel=`${monthName(month)} ${year}`,previousLabel=`${monthName(previousMonth)} ${previousYear}`;
+    $('#comparisonCurrentLabel').textContent=currentLabel;
+    $('#comparisonPreviousLabel').textContent=previousLabel;
+    $('#comparisonCurrentValue').textContent=money(currentValue);
+    $('#comparisonPreviousValue').textContent=priorUnavailable?'—':money(previousValue);
+    const change=$('#comparisonChangeAmount');
+    change.classList.remove('increase','decrease','neutral');
+    if(priorUnavailable){change.textContent='—';change.classList.add('neutral');$('#comparisonChangeText').textContent='Previous-year history is unavailable before 2000.';}
+    else if(Math.abs(delta)<0.005){change.textContent=money(0);change.classList.add('neutral');$('#comparisonChangeText').textContent='No change compared with the previous month.';}
+    else if(previousValue===0&&currentValue>0){change.textContent=`+${money(delta)}`;change.classList.add('increase');$('#comparisonChangeText').textContent='New spending this month; previous month was ₹0.';}
+    else if(delta>0){change.textContent=`+${money(delta)}`;change.classList.add('increase');$('#comparisonChangeText').textContent=`Spending increased ${pct.toFixed(1)}% compared with the previous month.`;}
+    else{change.textContent=`−${money(Math.abs(delta))}`;change.classList.add('decrease');$('#comparisonChangeText').textContent=`Spending decreased ${Math.abs(pct).toFixed(1)}% compared with the previous month.`;}
+    const max=Math.max(currentValue,previousValue,1),curWidth=currentValue?Math.max(2,currentValue/max*100):0,prevWidth=previousValue?Math.max(2,previousValue/max*100):0;
+    $('#comparisonBars').innerHTML=`<div class="comparison-bar-row"><div class="comparison-bar-heading"><span>${esc(currentLabel)}</span><strong>${money(currentValue)}</strong></div><div class="comparison-track"><div class="comparison-fill current-fill" style="width:${curWidth}%"></div></div></div><div class="comparison-bar-row"><div class="comparison-bar-heading"><span>${esc(previousLabel)}</span><strong>${priorUnavailable?'Unavailable':money(previousValue)}</strong></div><div class="comparison-track"><div class="comparison-fill previous-fill" style="width:${prevWidth}%"></div></div></div>`;
+  }
+  function compactMoney(v){return v>=100000?`₹${(v/100000).toFixed(1)}L`:v>=1000?`₹${(v/1000).toFixed(1)}k`:`₹${Math.round(v)}`;}$('#analyticsYear').addEventListener('change',loadAnalytics);$('#comparisonMonth').addEventListener('change',loadAnalytics);
+  async function loadBudgets(silent=false){try{state.budgets=await api('/budgets/');state.budgetSummaries={};await Promise.all(state.budgets.map(async b=>{try{state.budgetSummaries[b.id]=await api(`/budgets/${b.id}/summary`);}catch(e){state.budgetSummaries[b.id]=null;}}));$('#budgetCount').textContent=state.budgets.length;renderBudgets();renderBudgetPreview();renderBudgetAlerts();}catch(err){if(!silent)toast(err.message,'error');$('#budgetsGrid').innerHTML=`<div class="empty-state">${esc(err.message)}</div>`;}}
   function selectedBudgetMonth(){const v=$('#budgetMonthPicker').value||`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;const [year,month]=v.split('-').map(Number);return {year,month};}
-  function getBudgetSummary(b){return state.budgetSummaries[b.id]||{budget_amount:b.amount,total_spent:0,remaining_amount:b.amount,used_percentage:0,category:b.category,month:b.month,year:b.year};}
+  function getBudgetSummary(b){
+    if(state.expenseCacheReady){
+      const wanted=String(b.category||'').trim().toLocaleLowerCase();
+      const total=state.expenseCache.filter(e=>String(e.category||'').trim().toLocaleLowerCase()===wanted&&Number(String(e.expense_date||'').slice(5,7))===Number(b.month)&&Number(String(e.expense_date||'').slice(0,4))===Number(b.year)).reduce((sum,e)=>sum+Number(e.amount||0),0);
+      const amount=Number(b.amount||0),spent=Number(total.toFixed(2));
+      return {budget_amount:amount,total_spent:spent,remaining_amount:Number((amount-spent).toFixed(2)),used_percentage:amount>0?Number((spent/amount*100).toFixed(2)):0,category:b.category,month:b.month,year:b.year};
+    }
+    return state.budgetSummaries[b.id]||{budget_amount:b.amount,total_spent:0,remaining_amount:b.amount,used_percentage:0,category:b.category,month:b.month,year:b.year};
+  }
+  function renderBudgetAlertList(target,year,month){
+    if(!target)return;
+    const list=(state.budgets||[]).filter(b=>Number(b.month)===Number(month)&&Number(b.year)===Number(year));
+    if(!list.length){target.innerHTML=`<div class="budget-alert-empty"><span class="budget-alert-icon calm">✓</span><div><strong>No budgets to monitor</strong><p>Create a monthly budget for ${esc(monthName(month))} ${year} to receive spending alerts.</p></div></div>`;return;}
+    const alerts=list.map(b=>({budget:b,summary:getBudgetSummary(b),pct:Number(getBudgetSummary(b).used_percentage||0)})).filter(x=>x.pct>=80).sort((a,b)=>b.pct-a.pct);
+    if(!alerts.length){target.innerHTML=`<div class="budget-alert-empty"><span class="budget-alert-icon calm">✓</span><div><strong>All clear for ${esc(monthName(month))} ${year}</strong><p>Every budget is below the 80% warning threshold.</p></div></div>`;return;}
+    target.innerHTML=alerts.map(({budget,summary,pct})=>{
+      const over=pct>100,atLimit=pct===100,status=over?'Budget exceeded':atLimit?'Budget limit reached':'Approaching limit',remaining=Number(summary.remaining_amount||0);
+      const detail=over?`${money(Math.abs(remaining))} over the limit`:atLimit?'You have used the full budget':`${money(Math.max(0,remaining))} remaining`;
+      return `<article class="budget-alert-row ${over?'alert-over':'alert-near'}"><span class="budget-alert-icon">${over?'!':'↗'}</span><div class="budget-alert-copy"><div class="budget-alert-title"><strong>${esc(budget.category)} · ${status}</strong><span>${pct.toFixed(0)}%</span></div><p>${money(summary.total_spent)} spent of ${money(budget.amount)} · ${detail}.</p><div class="budget-alert-track"><div class="budget-alert-fill" style="width:${Math.min(100,Math.max(0,pct))}%"></div></div></div></article>`;
+    }).join('');
+  }
+  function renderBudgetAlerts(){const now=new Date();renderBudgetAlertList($('#overviewBudgetAlerts'),now.getFullYear(),now.getMonth()+1);const selected=selectedBudgetMonth();renderBudgetAlertList($('#budgetAlerts'),selected.year,selected.month);}
   function renderBudgetPreview(){const now=new Date(),month=now.getMonth()+1,year=now.getFullYear();const list=(state.budgets||[]).filter(b=>b.month===month&&b.year===year).slice(0,3);if(!list.length){$('#budgetPreview').innerHTML='<div class="empty-state">No budgets for this month yet. Set a limit to keep your spending on track.</div>';return;}$('#budgetPreview').innerHTML=list.map(b=>{const s=getBudgetSummary(b),pct=Math.max(0,Number(s.used_percentage||0));return `<div class="budget-mini"><div class="budget-mini-head"><span>${esc(b.category)}</span><span>${pct.toFixed(0)}%</span></div><small>${money(s.total_spent)} spent of ${money(b.amount)}</small><strong>${money(s.remaining_amount)} <span style="font:400 10px 'DM Sans';color:#9ba7b5">remaining</span></strong><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,pct)}%;background:${pct>100?'#cf6464':pct>=80?'#edb45e':'var(--green)'}"></div></div></div>`}).join('');}
-  function renderBudgets(){const {year,month}=selectedBudgetMonth(),list=state.budgets.filter(b=>b.month===month&&b.year===year);$('#budgetMonthLabel').textContent=`${monthName(month)} ${year}`;$('#budgetSummaryCount').textContent=list.length;$('#budgetPlanned').textContent=money(list.reduce((sum,b)=>sum+Number(b.amount||0),0));const grid=$('#budgetsGrid');if(!list.length){grid.innerHTML=`<div class="panel" style="grid-column:1/-1"><div class="empty-state">No budgets for ${monthName(month)} ${year}. Create one to start planning your spending.</div></div>`;return;}grid.innerHTML=list.map(b=>{const s=getBudgetSummary(b),pct=Number(s.used_percentage||0),remaining=Number(s.remaining_amount??b.amount),status=pct>100?['Over budget','over']:pct>=80?['Near limit','near']:['On track',''];return `<article class="budget-card"><div class="budget-card-top"><div class="budget-card-title"><div class="category-icon ${categoryClass(b.category)}">${iconFor(b.category)}</div><div><h3>${esc(b.category)}</h3><p>${monthName(b.month)} ${b.year}</p></div></div><div class="budget-actions"><button data-edit-budget="${b.id}" title="Edit budget">✎</button><button data-delete-budget="${b.id}" title="Delete budget">⌫</button></div></div><div class="budget-card-total"><div><span>MONTHLY LIMIT</span><br><strong>${money(b.amount)}</strong></div><span class="budget-status ${status[1]}">${status[0]}</span></div><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,Math.max(0,pct))}%;background:${pct>100?'#cf6464':pct>=80?'#edb45e':'var(--green)'}"></div></div><div class="budget-percent"><span>${money(s.total_spent)} spent</span><strong>${pct.toFixed(1)}%</strong></div><div class="budget-card-stats"><div><span>REMAINING</span><strong style="color:${remaining<0?'#c95151':'inherit'}">${money(remaining)}</strong></div><div><span>MONTHLY SPEND</span><strong>${money(s.total_spent)}</strong></div></div></article>`}).join('');}
+  function renderBudgets(){const {year,month}=selectedBudgetMonth(),list=state.budgets.filter(b=>b.month===month&&b.year===year);renderBudgetAlerts();$('#budgetMonthLabel').textContent=`${monthName(month)} ${year}`;$('#budgetSummaryCount').textContent=list.length;$('#budgetPlanned').textContent=money(list.reduce((sum,b)=>sum+Number(b.amount||0),0));const grid=$('#budgetsGrid');if(!list.length){grid.innerHTML=`<div class="panel" style="grid-column:1/-1"><div class="empty-state">No budgets for ${monthName(month)} ${year}. Create one to start planning your spending.</div></div>`;return;}grid.innerHTML=list.map(b=>{const s=getBudgetSummary(b),pct=Number(s.used_percentage||0),remaining=Number(s.remaining_amount??b.amount),status=pct>100?['Over budget','over']:pct>=80?['Near limit','near']:['On track',''];return `<article class="budget-card"><div class="budget-card-top"><div class="budget-card-title"><div class="category-icon ${categoryClass(b.category)}">${iconFor(b.category)}</div><div><h3>${esc(b.category)}</h3><p>${monthName(b.month)} ${b.year}</p></div></div><div class="budget-actions"><button data-edit-budget="${b.id}" title="Edit budget">✎</button><button data-delete-budget="${b.id}" title="Delete budget">⌫</button></div></div><div class="budget-card-total"><div><span>MONTHLY LIMIT</span><br><strong>${money(b.amount)}</strong></div><span class="budget-status ${status[1]}">${status[0]}</span></div><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,Math.max(0,pct))}%;background:${pct>100?'#cf6464':pct>=80?'#edb45e':'var(--green)'}"></div></div><div class="budget-percent"><span>${money(s.total_spent)} spent</span><strong>${pct.toFixed(1)}%</strong></div><div class="budget-card-stats"><div><span>REMAINING</span><strong style="color:${remaining<0?'#c95151':'inherit'}">${money(remaining)}</strong></div><div><span>MONTHLY SPEND</span><strong>${money(s.total_spent)}</strong></div></div></article>`}).join('');}
   $('#budgetMonthPicker').addEventListener('change',renderBudgets);$('#addBudgetBtn').addEventListener('click',()=>openBudget());
   function openBudget(item=null){state.editingBudget=item?item.id:null;$('#budgetForm').reset();$('#budgetError').hidden=true;$('#budgetModalTitle').textContent=item?'Edit budget':'Create a budget';$('#saveBudgetBtn').textContent=item?'Save changes ↗':'Save budget ↗';const now=new Date();$('#budgetCategory').value=item?.category||'';$('#budgetAmount').value=item?.amount||'';$('#budgetMonth').value=item?.month||now.getMonth()+1;$('#budgetYear').value=item?.year||now.getFullYear();openModal('budgetModal');$('#budgetCategory').focus();}
   $('#budgetForm').addEventListener('submit',async e=>{e.preventDefault();const btn=$('#saveBudgetBtn');btn.disabled=true;$('#budgetError').hidden=true;const body={category:$('#budgetCategory').value.trim(),amount:Number($('#budgetAmount').value).toFixed(2),month:Number($('#budgetMonth').value),year:Number($('#budgetYear').value)};try{if(state.editingBudget){await api(`/budgets/${state.editingBudget}`,{method:'PATCH',body:JSON.stringify(body)});toast('Budget updated.');}else{await api('/budgets/',{method:'POST',body:JSON.stringify(body)});toast('Budget created.');}closeModal('budgetModal');$('#budgetMonthPicker').value=`${body.year}-${String(body.month).padStart(2,'0')}`;await loadBudgets(true);renderOverview();}catch(err){$('#budgetError').textContent=err.message;$('#budgetError').hidden=false;}finally{btn.disabled=false;}});
