@@ -1,19 +1,43 @@
-Moneta Frontend (frontend folder only)
+MONETA FRONTEND — API CONNECTED
+================================
 
-Add this folder to your existing expense_tracker_api project root (the same folder that contains main.py). It should become:
-expense_tracker_api/
-  main.py
-  frontend/
-    index.html
-    app.js
-    styles.css
+This is a standalone frontend folder for the FastAPI project in the uploaded ZIP.
+It uses the same-origin FastAPI routes; no separate frontend server or API URL is needed.
 
-Then check that main.py serves the frontend:
-- mounts StaticFiles(directory=FRONTEND_DIR) at "/frontend"
-- GET "/" returns frontend/index.html
+INSTALL
+1. Extract this folder.
+2. Copy the entire `frontend` folder into the root of your existing `expense_tracker_api` project, replacing the old frontend files when prompted.
+3. Keep your existing `main.py` setup that mounts `/frontend` with StaticFiles and serves `frontend/index.html` at `/`.
+4. Commit and push the changed frontend files to the GitHub repository connected to Render.
+5. Wait for Render to deploy, then open the service root URL.
 
-If your main.py already does that, do not edit it. Start the API from the project root:
-python -m uvicorn main:app --reload
+API ROUTES USED
+- POST /auth/register
+- POST /auth/login
+- POST /expenses/
+- GET /expenses/?category=&start_date=&end_date=&page=&limit=
+- GET /expenses/{expense_id}
+- PATCH /expenses/{expense_id}
+- DELETE /expenses/{expense_id}
+- GET /expenses/summary
+- GET /expenses/analytics/monthly?year=
+- POST /budgets/
+- GET /budgets/
+- GET /budgets/{budget_id}
+- GET /budgets/{budget_id}/summary
+- PATCH /budgets/{budget_id}
+- DELETE /budgets/{budget_id}
 
-Open http://127.0.0.1:8000/ in your browser. Do not open index.html directly from File Explorer.
-The frontend uses the same origin as the API, so it does not need a separate API URL or CORS setup when served this way.
+FEATURES
+- Sign up / sign in and bearer-token authentication
+- Dashboard summary and category breakdown
+- Expense create, list, filters, pagination, view-for-edit, update, delete
+- Monthly analytics by year, 12-month chart, category mix
+- Budget create, list, month/year filtering, progress summaries, update and delete
+- Responsive desktop/mobile layout
+
+NOTES
+- Uses your existing FastAPI backend and exact API paths from the uploaded project.
+- Does not contain environment variables or database credentials.
+- The app stores the JWT token in browser localStorage and clears it when a 401 response indicates the session expired.
+- Budget summaries are returned by the backend per budget. If the backend returns an error for a particular summary, the card falls back to showing the budget with zero spend.
