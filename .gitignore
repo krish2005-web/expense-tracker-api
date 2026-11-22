@@ -1,10 +1,17 @@
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Python environments and caches
 venv/
 .venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
-.env
-.env.*
-!.env.example
-pytest_output.txt
+
+# Editors and generated output
 .vscode/
+pytest_output.txt
+.DS_Store
+Thumbs.db

@@ -2,6 +2,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -16,6 +17,20 @@ app = FastAPI(
     title="Moneta — Expense Tracker API",
     description="Personal expense tracking with JWT authentication and spending insights.",
     version="1.0.0",
+)
+
+# Allow the optional static frontend server on port 5500 to call this API.
+# The default FastAPI-served frontend (port 8000) is same-origin and does not
+# need CORS, but these origins are enabled for local development.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
+    ],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(auth_router)

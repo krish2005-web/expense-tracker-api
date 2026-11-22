@@ -8,7 +8,8 @@ import os
 from database import Base
 from models import User
 from dotenv import load_dotenv
-from models import Expense
+from models import Expense,PasswordResetToken
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 load_dotenv()

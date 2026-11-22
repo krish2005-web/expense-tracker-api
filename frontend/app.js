@@ -2,7 +2,35 @@
   'use strict';
   const $ = (s, root=document) => root.querySelector(s);
   const $$ = (s, root=document) => [...root.querySelectorAll(s)];
-  const state = { token: localStorage.getItem('moneta_token') || '', email: localStorage.getItem('moneta_email') || '', name: localStorage.getItem('moneta_name') || '', authMode:'login', page:'overview', expenses:[], allExpenses:[], summary:null, budgets:[], budgetSummaries:{}, pageNum:1, limit:10, filteredCount:0, expenseCache:[], expenseCacheReady:false, editingExpense:null, editingBudget:null, confirmResolve:null, monthly:null };
+  const API_BASE_URL = window.location.port === '5500'
+    ? `${window.location.protocol}//${window.location.hostname}:8000`
+    : window.location.origin;
+  const eyeIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+  const eyeOffIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18M10.6 6.2A10.8 10.8 0 0 1 12 6c6.1 0 9.5 6 9.5 6a15.8 15.8 0 0 1-3.1 3.7M6.2 6.3C3.8 8 2.5 12 2.5 12s3.4 6 9.5 6c1.1 0 2.1-.2 3-.5"></path><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path></svg>';
+  const state = { token: localStorage.getItem('moneta_token') || '', email: localStorage.getItem('moneta_email') || '', name: localStorage.getItem('moneta_name') || '', authMode:'login', resetEmail:'', page:'overview', expenses:[], allExpenses:[], summary:null, budgets:[], budgetSummaries:{}, pageNum:1, limit:10, filteredCount:0, expenseCache:[], expenseCacheReady:false, editingExpense:null, editingBudget:null, confirmResolve:null, monthly:null };
+  function clearAuthInputs(){
+    $('#authForm').reset();
+    $('#authEmail').value='';
+    $('#authPassword').value='';
+    $('#authName').value='';
+    $('#forgotPasswordForm').reset();
+    $('#forgotEmail').value='';
+    $('#resetPasswordForm').reset();
+    $('#resetOtp').value='';
+    $('#resetNewPassword').value='';
+    $('#confirmNewPassword').value='';
+    $('#autofillUsername').value='';
+    $('#autofillPassword').value='';
+    $$('[data-password-toggle]').forEach(button=>{
+      const input=$(`#${button.dataset.passwordToggle}`);
+      if(input) input.type='password';
+      button.innerHTML=eyeIcon;
+      button.setAttribute('aria-label','Show password');
+      button.setAttribute('title','Show password');
+      button.setAttribute('aria-pressed','false');
+    });
+    state.resetEmail='';
+  }
   const money = v => new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v||0));
   const dateToday = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
   const monthName = n => new Date(2000, Number(n)-1, 1).toLocaleString('en-IN',{month:'long'});
@@ -13,16 +41,134 @@
   function toast(message,type='success'){ const el=document.createElement('div');el.className=`toast ${type}`;el.textContent=message;$('#toastStack').append(el);setTimeout(()=>el.remove(),4200); }
   async function api(path, options={}){
     const headers={'Content-Type':'application/json',...(options.headers||{})}; if(state.token) headers.Authorization=`Bearer ${state.token}`;
-    let res; try{res=await fetch(path,{...options,headers});}catch(e){throw new Error('Could not reach the API. Check your internet connection and Render service status.');}
+    let res; try{res=await fetch(`${API_BASE_URL}${path}`,{...options,headers});}catch(e){throw new Error('Could not reach the API. Check your internet connection and Render service status.');}
     let data=null; const text=await res.text(); if(text){try{data=JSON.parse(text)}catch{data=text}}
     if(!res.ok){if(res.status===401 && state.token){logout(false);throw new Error('Your session expired. Please sign in again.');} const detail=data?.detail; throw new Error(Array.isArray(detail)?detail.map(x=>x.msg).join(', '):typeof detail==='string'?detail:`Request failed (${res.status})`);}
     return data;
   }
-  function setAuthMode(mode){state.authMode=mode;const register=mode==='register';$$('[data-auth-mode]').forEach(b=>b.classList.toggle('active',b.dataset.authMode===mode));$('#nameField').hidden=!register;$('#authName').required=register;$('#authTitle').textContent=register?'Create your space.':'Welcome back.';$('#authSubtitle').textContent=register?'A few details and you are ready to go.':'Sign in to pick up where you left off.';$('#authSubmit').innerHTML=register?'Create account <span>↗</span>':'Sign in <span>↗</span>';$('#authPassword').autocomplete=register?'new-password':'current-password';$('#authError').hidden=true;}
+  function setAuthMode(mode){
+    if(state.authMode!==mode){
+      $('#authEmail').value='';
+      $('#authPassword').value='';
+      $('#authName').value='';
+      }
+    state.authMode=mode;
+    const register=mode==='register';
+    $$('[data-auth-mode]').forEach(b=>b.classList.toggle('active',b.dataset.authMode===mode));
+    $('.auth-switch').hidden=false;
+    $('#authForm').hidden=false;
+    $('#forgotPasswordForm').hidden=true;
+    $('#resetPasswordForm').hidden=true;
+    $('#forgotPasswordLink').hidden=register;
+    $('#authNote').hidden=false;
+    $('#nameField').hidden=!register;
+    $('#authName').required=register;
+    $('#authTitle').textContent=register?'Create your space.':'Welcome back.';
+    $('#authSubtitle').textContent=register?'A few details and you are ready to go.':'Sign in to pick up where you left off.';
+    $('#authSubmit').innerHTML=register?'Create account <span>↗</span>':'Sign in <span>↗</span>';
+    $('#authPassword').autocomplete='off';
+    $('#authError').hidden=true;
+  }
+  function showPasswordResetView(view){
+    state.authMode=view;
+    $('.auth-switch').hidden=true;
+    $('#authForm').hidden=true;
+    $('#forgotPasswordLink').hidden=true;
+    $('#forgotPasswordForm').hidden=view!=='forgot';
+    $('#resetPasswordForm').hidden=view!=='reset';
+    $('#authNote').hidden=true;
+    $('#authTitle').textContent=view==='forgot'?'Reset your password.':'Check your inbox.';
+    $('#authSubtitle').textContent=view==='forgot'?'We will email you a one-time code.':'Enter your OTP and choose a new password.';
+    $('#forgotPasswordError').hidden=true;
+    $('#resetPasswordError').hidden=true;
+  }
   function showApp(){ $('#authScreen').hidden=true;$('#appShell').hidden=false;$('#profileName').textContent=state.name||state.email.split('@')[0]||'Your account';$('#profileEmail').textContent=state.email||'Signed in';$('#profileAvatar').textContent=(state.name||state.email||'M').trim().charAt(0).toUpperCase();$('#todayLabel').textContent=new Date().toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short'}).toUpperCase();$('#headingDate').textContent=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});$('#greetingTitle').textContent=`Good ${new Date().getHours()<12?'morning':new Date().getHours()<17?'afternoon':'evening'}, ${(state.name||state.email.split('@')[0]||'there').split(' ')[0]}.`;initPickers();refreshAll(); }
-  function logout(show=true){state.token='';localStorage.removeItem('moneta_token');localStorage.removeItem('moneta_email');localStorage.removeItem('moneta_name');state.email='';state.name='';$('#appShell').hidden=true;$('#authScreen').hidden=false;setAuthMode('login');if(show)toast('You have signed out.');}
+  function logout(show=true){state.token='';localStorage.removeItem('moneta_token');localStorage.removeItem('moneta_email');localStorage.removeItem('moneta_name');state.email='';state.name='';clearAuthInputs();$('#appShell').hidden=true;$('#authScreen').hidden=false;setAuthMode('login');if(show)toast('You have signed out.');}
   $('#authForm').addEventListener('submit',async e=>{e.preventDefault();const btn=$('#authSubmit');btn.disabled=true;$('#authError').hidden=true;try{if(state.authMode==='register'){const name=$('#authName').value.trim(),email=$('#authEmail').value.trim().toLowerCase(),password=$('#authPassword').value;const user=await api('/auth/register',{method:'POST',body:JSON.stringify({name,email,password}),headers:{}});state.name=user.name||name;state.email=user.email||email;const login=await api('/auth/login',{method:'POST',body:JSON.stringify({email,password})});state.token=login.access_token;}else{const email=$('#authEmail').value.trim().toLowerCase(),password=$('#authPassword').value;const login=await api('/auth/login',{method:'POST',body:JSON.stringify({email,password})});state.token=login.access_token;state.email=email;state.name=localStorage.getItem('moneta_name')||'';}localStorage.setItem('moneta_token',state.token);localStorage.setItem('moneta_email',state.email);localStorage.setItem('moneta_name',state.name);showApp();toast(state.authMode==='register'?'Account created. Welcome to Moneta.':'Welcome back.');}catch(err){$('#authError').textContent=err.message;$('#authError').hidden=false;}finally{btn.disabled=false;}});
   $$('[data-auth-mode]').forEach(b=>b.addEventListener('click',()=>setAuthMode(b.dataset.authMode)));
+  $$('[data-password-toggle]').forEach(button=>button.addEventListener('click',()=>{
+    const input=$(`#${button.dataset.passwordToggle}`);
+    if(!input) return;
+    const show=input.type==='password';
+    input.type=show?'text':'password';
+    button.innerHTML=show?eyeOffIcon:eyeIcon;
+    button.setAttribute('aria-label',show?'Hide password':'Show password');
+    button.setAttribute('title',show?'Hide password':'Show password');
+    button.setAttribute('aria-pressed',String(show));
+  }));
+  $('#forgotPasswordLink').addEventListener('click',()=>{
+    $('#forgotEmail').value='';
+    showPasswordResetView('forgot');
+  });
+  $('#backToLoginFromForgot').addEventListener('click',()=>setAuthMode('login'));
+  $('#backToLoginFromReset').addEventListener('click',()=>setAuthMode('login'));
+
+  $('#forgotPasswordForm').addEventListener('submit',async e=>{
+    e.preventDefault();
+    const btn=$('#sendOtpBtn');
+    const email=$('#forgotEmail').value.trim().toLowerCase();
+    btn.disabled=true;
+    $('#forgotPasswordError').hidden=true;
+    try{
+      await api('/auth/forgot-password',{method:'POST',body:JSON.stringify({email})});
+      state.resetEmail=email;
+      $('#resetEmail').value=email;
+      $('#resetOtp').value='';
+      $('#resetNewPassword').value='';
+      $('#confirmNewPassword').value='';
+      showPasswordResetView('reset');
+      toast('If an account exists for this email, an OTP has been sent.');
+    }catch(err){
+      $('#forgotPasswordError').textContent=err.message;
+      $('#forgotPasswordError').hidden=false;
+    }finally{
+      btn.disabled=false;
+    }
+  });
+
+  $('#resendOtpBtn').addEventListener('click',async()=>{
+    const btn=$('#resendOtpBtn');
+    btn.disabled=true;
+    $('#resetPasswordError').hidden=true;
+    try{
+      await api('/auth/forgot-password',{method:'POST',body:JSON.stringify({email:state.resetEmail})});
+      toast('If the account exists, a new OTP has been sent.');
+    }catch(err){
+      $('#resetPasswordError').textContent=err.message;
+      $('#resetPasswordError').hidden=false;
+    }finally{
+      btn.disabled=false;
+    }
+  });
+
+  $('#resetPasswordForm').addEventListener('submit',async e=>{
+    e.preventDefault();
+    const btn=$('#resetPasswordBtn');
+    const otp=$('#resetOtp').value.trim();
+    const newPassword=$('#resetNewPassword').value;
+    const confirmPassword=$('#confirmNewPassword').value;
+    $('#resetPasswordError').hidden=true;
+    if(newPassword!==confirmPassword){
+      $('#resetPasswordError').textContent='The new passwords do not match.';
+      $('#resetPasswordError').hidden=false;
+      return;
+    }
+    btn.disabled=true;
+    try{
+      await api('/auth/reset-password',{
+        method:'POST',
+        body:JSON.stringify({email:state.resetEmail,otp,new_password:newPassword})
+      });
+      clearAuthInputs();
+      setAuthMode('login');
+      toast('Password reset successfully. Please sign in with your new password.');
+    }catch(err){
+      $('#resetPasswordError').textContent=err.message;
+      $('#resetPasswordError').hidden=false;
+    }finally{
+      btn.disabled=false;
+    }
+  });
   $('#logoutBtn').addEventListener('click',()=>logout());
   function closeMobileNav(){const sidebar=$('#sidebar'),scrim=$('#sidebarScrim'),toggle=$('#menuToggle');sidebar.classList.remove('open');scrim?.classList.remove('active');scrim?.setAttribute('aria-hidden','true');toggle?.setAttribute('aria-expanded','false');toggle?.setAttribute('aria-label','Open navigation');document.body.classList.remove('nav-open');}
   function setMobileNav(open){const sidebar=$('#sidebar'),scrim=$('#sidebarScrim'),toggle=$('#menuToggle');sidebar.classList.toggle('open',Boolean(open));scrim?.classList.toggle('active',Boolean(open));scrim?.setAttribute('aria-hidden',String(!open));toggle?.setAttribute('aria-expanded',String(Boolean(open)));toggle?.setAttribute('aria-label',open?'Close navigation':'Open navigation');document.body.classList.toggle('nav-open',Boolean(open));}
@@ -123,7 +269,7 @@
 
     try {
       // Use raw fetch instead of api(): CSV is a file response, not JSON.
-      const response = await fetch(url, {
+      const response = await fetch(`${API_BASE_URL}${url}`, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${state.token}`,
@@ -296,5 +442,6 @@
   function openBudget(item=null){state.editingBudget=item?item.id:null;$('#budgetForm').reset();$('#budgetError').hidden=true;$('#budgetModalTitle').textContent=item?'Edit budget':'Create a budget';$('#saveBudgetBtn').textContent=item?'Save changes ↗':'Save budget ↗';const now=new Date();$('#budgetCategory').value=item?.category||'';$('#budgetAmount').value=item?.amount||'';$('#budgetMonth').value=item?.month||now.getMonth()+1;$('#budgetYear').value=item?.year||now.getFullYear();openModal('budgetModal');$('#budgetCategory').focus();}
   $('#budgetForm').addEventListener('submit',async e=>{e.preventDefault();const btn=$('#saveBudgetBtn');btn.disabled=true;$('#budgetError').hidden=true;const body={category:$('#budgetCategory').value.trim(),amount:Number($('#budgetAmount').value).toFixed(2),month:Number($('#budgetMonth').value),year:Number($('#budgetYear').value)};try{if(state.editingBudget){await api(`/budgets/${state.editingBudget}`,{method:'PATCH',body:JSON.stringify(body)});toast('Budget updated.');}else{await api('/budgets/',{method:'POST',body:JSON.stringify(body)});toast('Budget created.');}closeModal('budgetModal');$('#budgetMonthPicker').value=`${body.year}-${String(body.month).padStart(2,'0')}`;await loadBudgets(true);renderOverview();}catch(err){$('#budgetError').textContent=err.message;$('#budgetError').hidden=false;}finally{btn.disabled=false;}});
   document.addEventListener('click',async e=>{const edit=e.target.closest('[data-edit-budget]'),del=e.target.closest('[data-delete-budget]');if(edit){const b=state.budgets.find(x=>x.id===Number(edit.dataset.editBudget));if(b)openBudget(b);}if(del){const id=Number(del.dataset.deleteBudget),b=state.budgets.find(x=>x.id===id);const ok=await askConfirm('Delete this budget?',`The ${b?.category||'selected'} budget will be permanently removed.`);if(!ok)return;try{await api(`/budgets/${id}`,{method:'DELETE'});toast('Budget deleted.');await loadBudgets(true);renderOverview();}catch(err){toast(err.message,'error');}}});
-  if(state.token){showApp();}else{setAuthMode('login');$('#authScreen').hidden=false;$('#appShell').hidden=true;}
+  window.addEventListener('pageshow',()=>{if(!state.token) clearAuthInputs();});
+  if(state.token){showApp();}else{clearAuthInputs();setAuthMode('login');$('#authScreen').hidden=false;$('#appShell').hidden=true;}
 })();

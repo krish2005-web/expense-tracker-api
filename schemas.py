@@ -106,3 +106,10 @@ class BudgetUpdate(BaseModel):
     month:int|None=Field(default=None,ge=1,le=12)  
     year:int|None=Field(default=None,ge=2000,le=2100)  
 
+class ForgetPasswordRequest(BaseModel):
+    email:EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email:EmailStr
+    otp:str=Field(pattern=r"^\d{6}$")
+    new_password:str=Field(min_length=8)
